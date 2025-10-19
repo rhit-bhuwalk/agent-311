@@ -66,39 +66,49 @@ async def twilio_webhook(
         request_status = 'Pending'
         sf311_case_id = None
 
-        try:
-            result = await submit_to_311(analysis, From, MessageSid)
+        # TODO: SF311 submission - currently commented out
+        # try:
+        #     result = await submit_to_311(analysis, From, MessageSid)
+        #
+        #     if result['success']:
+        #         request_status = 'Submitted'
+        #         sf311_case_id = result['caseId']
+        #
+        #         twiml.message(
+        #             f"✅ Your {analysis['requestType']} report has been submitted to SF 311!\n\n"
+        #             f"📍 Location: {analysis['location']}\n"
+        #             f"📋 Case ID: {result['caseId']}\n\n"
+        #             f"You can track your request at: {result.get('trackingUrl', 'https://www.sf.gov/check-status-311-request')}"
+        #         )
+        #     else:
+        #         request_status = 'Failed'
+        #
+        #         twiml.message(
+        #             f"⚠️ I understood your request but couldn't submit it automatically.\n\n"
+        #             f"📍 {analysis['requestType']} at {analysis['location']}\n\n"
+        #             f"Please submit manually at: https://www.sf.gov/topics/311-online-services\n"
+        #             f"Reason: {result.get('error', 'Unknown error')}"
+        #         )
+        #
+        # except Exception as submit_error:
+        #     print(f'❌ Error submitting to 311: {submit_error}')
+        #     request_status = 'Failed'
+        #
+        #     twiml.message(
+        #         f"⚠️ I understood your request:\n\n"
+        #         f"📍 {analysis['requestType']} at {analysis['location']}\n\n"
+        #         f"But there was an error submitting. Please try submitting manually at:\n"
+        #         f"https://www.sf.gov/topics/311-online-services"
+        #     )
 
-            if result['success']:
-                request_status = 'Submitted'
-                sf311_case_id = result['caseId']
-
-                twiml.message(
-                    f"✅ Your {analysis['requestType']} report has been submitted to SF 311!\n\n"
-                    f"📍 Location: {analysis['location']}\n"
-                    f"📋 Case ID: {result['caseId']}\n\n"
-                    f"You can track your request at: {result.get('trackingUrl', 'https://www.sf.gov/check-status-311-request')}"
-                )
-            else:
-                request_status = 'Failed'
-
-                twiml.message(
-                    f"⚠️ I understood your request but couldn't submit it automatically.\n\n"
-                    f"📍 {analysis['requestType']} at {analysis['location']}\n\n"
-                    f"Please submit manually at: https://www.sf.gov/topics/311-online-services\n"
-                    f"Reason: {result.get('error', 'Unknown error')}"
-                )
-
-        except Exception as submit_error:
-            print(f'❌ Error submitting to 311: {submit_error}')
-            request_status = 'Failed'
-
-            twiml.message(
-                f"⚠️ I understood your request:\n\n"
-                f"📍 {analysis['requestType']} at {analysis['location']}\n\n"
-                f"But there was an error submitting. Please try submitting manually at:\n"
-                f"https://www.sf.gov/topics/311-online-services"
-            )
+        # For now, just send confirmation that we understood the request
+        request_status = 'Submitted'
+        twiml.message(
+            f"✅ I understood your request!\n\n"
+            f"📍 {analysis['requestType']} at {analysis['location']}\n"
+            f"📝 Details: {analysis['details']}\n"
+            f"🎯 Confidence: {analysis['confidence']:.0%}"
+        )
 
         # Store the message and request in memory
         message = {

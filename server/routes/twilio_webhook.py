@@ -279,12 +279,16 @@ async def twilio_webhook(
             else:
                 print(f"❌ Media processing returned None")
 
+        # Send immediate acknowledgment to user
+        twiml = MessagingResponse()
+        twiml.message("Processing your request...")
+
         # Add background task to process message and send response
         background_tasks.add_task(process_message_background, user.id, From)
         print(f"⏰ Background task scheduled for {From}")
 
-        # Return empty 200 OK immediately to Twilio
-        return Response(content='', status_code=200)
+        # Return TwiML response with acknowledgment message
+        return Response(content=str(twiml), media_type='text/xml')
 
     except Exception as error:
         print(f'❌ Error processing webhook: {error}')

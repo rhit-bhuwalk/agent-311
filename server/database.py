@@ -2,7 +2,7 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy import String, Text, DateTime, ForeignKey, text, select
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 import os
 from uuid import UUID, uuid4
@@ -89,21 +89,25 @@ async def get_db() -> AsyncSession:
         yield session
 
 
-async def get_recent_messages(db: AsyncSession, user_id: UUID, limit: int = 10) -> list[Message]:
+async def get_recent_messages(db: AsyncSession, user_id: UUID, limit: int = 10, minutes: int = 10) -> list[Message]:
     """
-    Get recent messages for a user in chronological order (oldest first).
+    Get recent messages for a user from the last N minutes in chronological order (oldest first).
 
     Args:
         db: Database session
         user_id: User ID
         limit: Number of messages to retrieve (default 10)
+        minutes: Only retrieve messages from the last N minutes (default 10)
 
     Returns:
         List of Message objects in chronological order
     """
+    cutoff_time = datetime.utcnow() - timedelta(minutes=minutes)
+
     result = await db.execute(
         select(Message)
         .where(Message.user_id == user_id)
+        .where(Message.timestamp >= cutoff_time)
         .order_by(Message.timestamp.desc())
         .limit(limit)
     )

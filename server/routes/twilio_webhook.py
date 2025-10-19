@@ -2,21 +2,114 @@
 import base64
 from datetime import datetime
 from typing import Optional
-from fastapi import APIRouter, Form, Response, Depends
+from fastapi import APIRouter, Form, Response, Depends, BackgroundTasks
 from twilio.twiml.messaging_response import MessagingResponse
+from twilio.rest import Client
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 try:
     from server.services.gemini import analyze_image, analyze_video, fetch_media_bytes
     from server.services.dedalus_service import analyze_conversation_with_dedalus
-    from server.database import get_db, User, Message, get_recent_messages
+    from server.database import get_db, User, Message, get_recent_messages, async_session_maker
+    from server.config import config
 except ModuleNotFoundError:
     from services.gemini import analyze_image, analyze_video, fetch_media_bytes
     from services.dedalus_service import analyze_conversation_with_dedalus
-    from database import get_db, User, Message, get_recent_messages
+    from database import get_db, User, Message, get_recent_messages, async_session_maker
+    from config import config
 
 router = APIRouter(prefix='/twilio', tags=['twilio'])
+
+
+def send_whatsapp_message(to: str, message: str):
+    """Send a WhatsApp message via Twilio REST API."""
+    try:
+        client = Client(config.TWILIO_ACCOUNT_SID, config.TWILIO_AUTH_TOKEN)
+
+        # Extract phone number from WhatsApp format (whatsapp:+1234567890 -> +1234567890)
+        to_number = to.replace('whatsapp:', '')
+
+        # Twilio WhatsApp numbers need the whatsapp: prefix
+        message = client.messages.create(
+            from_='whatsapp:+14155238886',  # Twilio Sandbox number
+            body=message,
+            to=f'whatsapp:{to_number}'
+        )
+
+        print(f"✅ Message sent via Twilio API: {message.sid}")
+        return message.sid
+    except Exception as e:
+        print(f"❌ Error sending WhatsApp message: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
+async def process_message_background(user_id, phone_number: str):
+    """Background task to process message and send response."""
+    try:
+        print(f"🔄 Background processing started for {phone_number}")
+
+        # Create a new database session for the background task
+        async with async_session_maker() as db:
+            # Get last 10 messages for conversation context
+            recent_messages = await get_recent_messages(db, user_id, limit=10)
+            print(f"📜 Retrieved {len(recent_messages)} recent messages")
+
+            # Convert messages to dict format for Dedalus (include image data)
+            message_dicts = [
+                {
+                    "content": msg.content,
+                    "is_from_user": msg.is_from_user,
+                    "content_type": msg.content_type,
+                    "image_data": msg.image_data if hasattr(msg, 'image_data') else None
+                }
+                for msg in recent_messages
+            ]
+
+            # Analyze conversation with Dedalus
+            print(f"🤖 Analyzing conversation with Dedalus...")
+            try:
+                analysis = await analyze_conversation_with_dedalus(message_dicts)
+                print(f"✅ Dedalus analysis completed: {analysis}")
+            except Exception as e:
+                print(f"❌ Error calling analyze_conversation_with_dedalus: {e}")
+                import traceback
+                traceback.print_exc()
+                # Use fallback
+                analysis = {
+                    "reporting": None,
+                    "location": None,
+                    "needs_clarification": True,
+                    "clarification_question": "I encountered an error. Can you describe what you'd like to report?",
+                    "response_message": "I encountered an error processing your message. Can you tell me what issue you'd like to report and where it's located?"
+                }
+
+            # Get the response message
+            response_text = analysis.get("response_message", "I'm here to help you report issues to SF 311!")
+            print(f"📤 Sending response to user: {response_text}")
+
+            # Store AI response in database
+            message = Message(
+                user_id=user_id,
+                content=response_text,
+                content_type="text",
+                is_from_user=False,
+                image_data=None
+            )
+            db.add(message)
+            await db.commit()
+
+            # Send response via Twilio API
+            send_whatsapp_message(phone_number, response_text)
+
+            print(f"✅ Background processing completed for {phone_number}")
+
+    except Exception as e:
+        print(f"❌ Error in background processing: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 async def get_or_create_user(db: AsyncSession, phone_number: str) -> User:
@@ -135,6 +228,7 @@ async def process_and_store_media(
 
 @router.post('/webhook')
 async def twilio_webhook(
+    background_tasks: BackgroundTasks,
     From: str = Form(...),
     Body: str = Form(default=""),
     MessageSid: str = Form(...),
@@ -146,12 +240,14 @@ async def twilio_webhook(
     """
     Main webhook endpoint for incoming WhatsApp messages.
 
-    Conversational flow:
-    1. Store user's message (text/image/video)
-    2. Get last 10 messages
-    3. Analyze conversation with Gemini to extract reporting + location
-    4. Ask for clarification if needed, or confirm if all info is present
-    5. Store AI response
+    This endpoint responds immediately to Twilio (within 15 seconds) and processes
+    the message in the background to avoid timeout issues.
+
+    Flow:
+    1. Store user's message (text/image/video) immediately
+    2. Return 200 OK to Twilio
+    3. Process message analysis in background
+    4. Send response via Twilio API when ready
     """
     try:
         print(f'📨 Incoming message from {From}')
@@ -183,63 +279,20 @@ async def twilio_webhook(
             else:
                 print(f"❌ Media processing returned None")
 
-        # Get last 10 messages for conversation context
-        recent_messages = await get_recent_messages(db, user.id, limit=10)
-        print(f"📜 Retrieved {len(recent_messages)} recent messages")
+        # Add background task to process message and send response
+        background_tasks.add_task(process_message_background, user.id, From)
+        print(f"⏰ Background task scheduled for {From}")
 
-        # Convert messages to dict format for Dedalus (include image data)
-        message_dicts = [
-            {
-                "content": msg.content,
-                "is_from_user": msg.is_from_user,
-                "content_type": msg.content_type,
-                "image_data": msg.image_data if hasattr(msg, 'image_data') else None
-            }
-            for msg in recent_messages
-        ]
-
-        # Analyze conversation with Dedalus
-        print(f"🤖 Analyzing conversation with Dedalus...")
-        try:
-            analysis = await analyze_conversation_with_dedalus(message_dicts)
-            print(f"✅ Dedalus analysis completed: {analysis}")
-        except Exception as e:
-            print(f"❌ Error calling analyze_conversation_with_dedalus: {e}")
-            import traceback
-            traceback.print_exc()
-            # Use fallback
-            analysis = {
-                "reporting": None,
-                "location": None,
-                "needs_clarification": True,
-                "clarification_question": "I encountered an error. Can you describe what you'd like to report?",
-                "response_message": "I encountered an error processing your message. Can you tell me what issue you'd like to report and where it's located?"
-            }
-
-        # Get the response message
-        response_text = analysis.get("response_message", "I'm here to help you report issues to SF 311!")
-        print(f"📤 Sending response to user: {response_text}")
-
-        # Store AI response
-        await store_message(db, user, response_text, "text", is_from_user=False)
-
-        # Send response via Twilio
-        twiml = MessagingResponse()
-        twiml.message(response_text)
-
-        return Response(content=str(twiml), media_type='text/xml')
+        # Return empty 200 OK immediately to Twilio
+        return Response(content='', status_code=200)
 
     except Exception as error:
         print(f'❌ Error processing webhook: {error}')
         import traceback
         traceback.print_exc()
 
-        twiml = MessagingResponse()
-        twiml.message(
-            'Sorry, there was an error processing your message. '
-            'Please try again later.'
-        )
-        return Response(content=str(twiml), media_type='text/xml')
+        # Still return 200 to Twilio to avoid retries
+        return Response(content='', status_code=200)
 
 
 @router.post('/status')

@@ -12,7 +12,12 @@ import google.generativeai as genai
 from google import genai as genai_live
 from google.genai import types
 
-from server.config import config
+try:
+    # Try absolute import (for local development)
+    from server.config import config
+except ModuleNotFoundError:
+    # Fall back to relative import (for Railway deployment)
+    from config import config
 
 # Configure Gemini
 genai.configure(api_key=config.GEMINI_API_KEY)
@@ -24,6 +29,15 @@ class GeminiModels:
     PRO = 'gemini-2.5-pro'
     FLASH_LITE = 'gemini-2.5-flash-lite'
     LIVE_FLASH = 'models/gemini-2.0-flash-exp'
+
+
+# Dictionary version for API endpoints
+GEMINI_MODELS = {
+    'FLASH': GeminiModels.FLASH,
+    'PRO': GeminiModels.PRO,
+    'FLASH_LITE': GeminiModels.FLASH_LITE,
+    'LIVE_FLASH': GeminiModels.LIVE_FLASH
+}
 
 
 # Shared prompt for 311 analysis

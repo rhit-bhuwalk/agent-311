@@ -5,10 +5,18 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from server.config import config
-from server.routes.twilio_webhook import router as twilio_router
-from server.services.gemini import GEMINI_MODELS
-from server.storage import get_messages, get_requests
+try:
+    # Try absolute imports (for local development)
+    from server.config import config
+    from server.routes.twilio_webhook import router as twilio_router
+    from server.services.gemini import GEMINI_MODELS
+    from server.storage import get_messages, get_requests
+except ModuleNotFoundError:
+    # Fall back to relative imports (for Railway deployment)
+    from config import config
+    from routes.twilio_webhook import router as twilio_router
+    from services.gemini import GEMINI_MODELS
+    from storage import get_messages, get_requests
 
 # Create FastAPI app
 app = FastAPI(

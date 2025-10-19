@@ -4,8 +4,14 @@ from typing import Dict
 from fastapi import APIRouter, Form, Response
 from twilio.twiml.messaging_response import MessagingResponse
 
-from server.services.gemini import analyze_text
-from server.storage import add_message, add_request
+try:
+    # Try absolute imports (for local development)
+    from server.services.gemini import analyze_text
+    from server.storage import add_message, add_request
+except ModuleNotFoundError:
+    # Fall back to relative imports (for Railway deployment)
+    from services.gemini import analyze_text
+    from storage import add_message, add_request
 
 router = APIRouter(prefix='/twilio', tags=['twilio'])
 
@@ -40,7 +46,10 @@ async def twilio_webhook(
 
         # Analyze the message with Gemini using the currently selected model
         # Import here to avoid circular dependency
-        from server.main import current_model
+        try:
+            from server.main import current_model
+        except ModuleNotFoundError:
+            from main import current_model
         analysis = await analyze_text(Body, current_model)
 
         if not analysis:

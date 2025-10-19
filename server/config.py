@@ -22,8 +22,8 @@ class Config:
     """Application configuration."""
     GEMINI_API_KEY: str = os.getenv('GEMINI_API_KEY', '')
     PORT: int = int(os.getenv('PORT', 3001))
-    TWILIO_ACCOUNT_SID: str = os.getenv('TWILIO_ACCOUNT_SID', '')
-    TWILIO_AUTH_TOKEN: str = os.getenv('TWILIO_AUTH_TOKEN', '')
+    # Twilio credentials (optional - for webhook validation)
+    TWILIO_API_KEY: str = os.getenv('TWILIO_API_KEY', '')
 
 
 config = Config()

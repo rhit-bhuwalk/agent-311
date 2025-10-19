@@ -187,8 +187,7 @@ ngrok http 3001
 The backend requires these environment variables in `.env.local`:
 - `GEMINI_API_KEY` - Your Gemini API key (required)
 - `PORT` - Server port (optional, defaults to 3001)
-- `TWILIO_ACCOUNT_SID` - Twilio account SID (optional, for validation)
-- `TWILIO_AUTH_TOKEN` - Twilio auth token (optional, for validation)
+- `TWILIO_API_KEY` - Twilio api key (optional, for validation)
 
 ## Key Implementation Notes
 

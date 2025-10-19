@@ -2,6 +2,7 @@
 import asyncio
 import base64
 import io
+import json
 from typing import Optional, Union
 from pathlib import Path
 
@@ -232,3 +233,100 @@ async def fetch_media_bytes(url: str) -> Optional[bytes]:
         import traceback
         traceback.print_exc()
         return None
+
+
+async def analyze_conversation(messages: list[dict], model: str = GeminiModels.FLASH) -> dict:
+    """
+    Analyze conversation history to extract what's being reported and where.
+
+    Args:
+        messages: List of message dicts with 'content', 'is_from_user', and 'content_type'
+        model: Gemini model to use
+
+    Returns:
+        Dict with:
+        - reporting: What is being reported (e.g., "broken pothole")
+        - location: Where it's located (e.g., "1160 Mission Street")
+        - needs_clarification: Boolean - true if more info needed
+        - clarification_question: Question to ask user if needs_clarification is true
+        - response_message: Message to send back to user
+    """
+    try:
+        # Build conversation history
+        conversation = []
+        for msg in messages:
+            role = "user" if msg.get("is_from_user") else "assistant"
+            content = msg.get("content", "")
+            conversation.append(f"{role.upper()}: {content}")
+
+        conversation_text = "\n".join(conversation)
+
+        prompt = f"""You are a helpful assistant for SF 311 service requests. Your job is to understand what issue the user is reporting and where it's located.
+
+Analyze the following conversation and extract:
+1. **reporting**: What is being reported (e.g., "broken pothole", "graffiti", "illegal dumping")
+2. **location**: Where is it located (full address if possible, e.g., "1160 Mission Street, San Francisco")
+
+If BOTH reporting and location are clear, set needs_clarification to false and provide a confirmation message.
+If EITHER is unclear or missing, set needs_clarification to true and ask specifically for what's missing.
+
+CONVERSATION HISTORY:
+{conversation_text}
+
+Respond with ONLY valid JSON in this exact format:
+{{
+    "reporting": "what is being reported or null if unclear",
+    "location": "where it is located or null if unclear",
+    "needs_clarification": true/false,
+    "clarification_question": "question to ask if needs_clarification is true, otherwise null",
+    "response_message": "friendly message to send to the user"
+}}
+
+Examples:
+
+If user says "there's a pothole on mission street":
+{{
+    "reporting": "pothole",
+    "location": "Mission Street",
+    "needs_clarification": true,
+    "clarification_question": "Can you provide the exact address or cross streets for the pothole on Mission Street?",
+    "response_message": "I understand there's a pothole on Mission Street. Can you provide the exact address or cross streets so I can submit this to SF 311?"
+}}
+
+If user says "broken pothole at 1160 mission street":
+{{
+    "reporting": "pothole",
+    "location": "1160 Mission Street",
+    "needs_clarification": false,
+    "clarification_question": null,
+    "response_message": "Got it! I'll submit a report for a pothole at 1160 Mission Street to SF 311."
+}}
+
+Now analyze the conversation above and respond with JSON only:"""
+
+        response = genai.GenerativeModel(model).generate_content(prompt)
+        result_text = response.text.strip()
+
+        # Try to extract JSON from response
+        # Sometimes the model wraps it in ```json blocks
+        if "```json" in result_text:
+            result_text = result_text.split("```json")[1].split("```")[0].strip()
+        elif "```" in result_text:
+            result_text = result_text.split("```")[1].split("```")[0].strip()
+
+        result = json.loads(result_text)
+        print(f"💬 Conversation analysis: {result}")
+        return result
+
+    except Exception as e:
+        print(f"❌ Error in analyze_conversation: {e}")
+        import traceback
+        traceback.print_exc()
+        # Return a fallback response
+        return {
+            "reporting": None,
+            "location": None,
+            "needs_clarification": True,
+            "clarification_question": "I'm having trouble understanding. Can you describe what issue you'd like to report and where it's located?",
+            "response_message": "I'm having trouble understanding. Can you describe what issue you'd like to report and where it's located?"
+        }

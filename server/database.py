@@ -1,7 +1,7 @@
 """PostgreSQL database connection and models."""
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from sqlalchemy import String, Text, DateTime, ForeignKey, text
+from sqlalchemy import String, Text, DateTime, ForeignKey, text, select
 from datetime import datetime
 from typing import Optional
 import os
@@ -65,6 +65,7 @@ class Message(Base):
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     content: Mapped[str] = mapped_column(Text, nullable=False)
     content_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    is_from_user: Mapped[bool] = mapped_column(default=True, nullable=False)
     timestamp: Mapped[datetime] = mapped_column(
         DateTime,
         server_default=text("NOW()")
@@ -85,3 +86,27 @@ async def get_db() -> AsyncSession:
     """Get database session."""
     async with async_session_maker() as session:
         yield session
+
+
+async def get_recent_messages(db: AsyncSession, user_id: UUID, limit: int = 10) -> list[Message]:
+    """
+    Get recent messages for a user in chronological order (oldest first).
+
+    Args:
+        db: Database session
+        user_id: User ID
+        limit: Number of messages to retrieve (default 10)
+
+    Returns:
+        List of Message objects in chronological order
+    """
+    result = await db.execute(
+        select(Message)
+        .where(Message.user_id == user_id)
+        .order_by(Message.timestamp.desc())
+        .limit(limit)
+    )
+    messages = list(result.scalars().all())
+    # Reverse to get chronological order (oldest first)
+    messages.reverse()
+    return messages

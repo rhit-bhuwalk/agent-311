@@ -7,11 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 try:
-    from server.services.gemini import analyze_image, analyze_video, fetch_media_bytes
-    from server.database import get_db, User, Message
+    from server.services.gemini import analyze_image, analyze_video, fetch_media_bytes, analyze_conversation
+    from server.database import get_db, User, Message, get_recent_messages
 except ModuleNotFoundError:
-    from services.gemini import analyze_image, analyze_video, fetch_media_bytes
-    from database import get_db, User, Message
+    from services.gemini import analyze_image, analyze_video, fetch_media_bytes, analyze_conversation
+    from database import get_db, User, Message, get_recent_messages
 
 router = APIRouter(prefix='/twilio', tags=['twilio'])
 
@@ -39,13 +39,15 @@ async def store_message(
     db: AsyncSession,
     user: User,
     content: str,
-    content_type: str
+    content_type: str,
+    is_from_user: bool = True
 ) -> Message:
     """Store a message in the database."""
     message = Message(
         user_id=user.id,
         content=content,
-        content_type=content_type
+        content_type=content_type,
+        is_from_user=is_from_user
     )
     db.add(message)
     await db.commit()
@@ -89,7 +91,7 @@ async def process_and_store_media(
             if analysis:
                 content = f"<image>{analysis}</image>"
                 print(f"💾 Storing image analysis: {analysis[:100]}...")
-                message = await store_message(db, user, content, "image")
+                message = await store_message(db, user, content, "image", is_from_user=True)
                 print(f"✅ Stored image analysis")
                 return message
             else:
@@ -102,7 +104,7 @@ async def process_and_store_media(
             if analysis:
                 content = f"<video>{analysis}</video>"
                 print(f"💾 Storing video analysis: {analysis[:100]}...")
-                message = await store_message(db, user, content, "video")
+                message = await store_message(db, user, content, "video", is_from_user=True)
                 print(f"✅ Stored video analysis")
                 return message
             else:
@@ -132,10 +134,12 @@ async def twilio_webhook(
     """
     Main webhook endpoint for incoming WhatsApp messages.
 
-    Handles:
-    - Text messages: stored directly
-    - Images: analyzed by Gemini, description stored with <image> tags
-    - Videos: analyzed by Gemini, description stored with <video> tags
+    Conversational flow:
+    1. Store user's message (text/image/video)
+    2. Get last 10 messages
+    3. Analyze conversation with Gemini to extract reporting + location
+    4. Ask for clarification if needed, or confirm if all info is present
+    5. Store AI response
     """
     try:
         print(f'📨 Incoming message from {From}')
@@ -147,12 +151,10 @@ async def twilio_webhook(
         # Get or create user
         user = await get_or_create_user(db, From)
 
-        twiml = MessagingResponse()
-
         # Store text message if present
         if Body and Body.strip():
-            await store_message(db, user, Body, "text")
-            print(f"✅ Stored text message")
+            await store_message(db, user, Body, "text", is_from_user=True)
+            print(f"✅ Stored text message from user")
 
         # Process media if present (images and videos get analyzed by Gemini)
         if NumMedia > 0 and MediaUrl0:
@@ -169,16 +171,40 @@ async def twilio_webhook(
             else:
                 print(f"❌ Media processing returned None")
 
-        # Send acknowledgment
-        if Body and Body.strip():
-            twiml.message("✅ Got it! Message stored.")
-        else:
-            twiml.message("✅ Received and analyzed your media!")
+        # Get last 10 messages for conversation context
+        recent_messages = await get_recent_messages(db, user.id, limit=10)
+        print(f"📜 Retrieved {len(recent_messages)} recent messages")
+
+        # Convert messages to dict format for Gemini
+        message_dicts = [
+            {
+                "content": msg.content,
+                "is_from_user": msg.is_from_user,
+                "content_type": msg.content_type
+            }
+            for msg in recent_messages
+        ]
+
+        # Analyze conversation with Gemini
+        print(f"🤖 Analyzing conversation with Gemini...")
+        analysis = await analyze_conversation(message_dicts)
+
+        # Get the response message
+        response_text = analysis.get("response_message", "I'm here to help you report issues to SF 311!")
+
+        # Store AI response
+        await store_message(db, user, response_text, "text", is_from_user=False)
+
+        # Send response via Twilio
+        twiml = MessagingResponse()
+        twiml.message(response_text)
 
         return Response(content=str(twiml), media_type='text/xml')
 
     except Exception as error:
         print(f'❌ Error processing webhook: {error}')
+        import traceback
+        traceback.print_exc()
 
         twiml = MessagingResponse()
         twiml.message(

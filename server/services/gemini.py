@@ -188,6 +188,8 @@ async def fetch_media_bytes(url: str) -> Optional[bytes]:
     """
     Fetch media from a URL into memory.
 
+    For Twilio media URLs, uses HTTP Basic Auth with Account SID and Auth Token.
+
     Args:
         url: URL to fetch from
 
@@ -196,12 +198,29 @@ async def fetch_media_bytes(url: str) -> Optional[bytes]:
     """
     try:
         import requests
+        from requests.auth import HTTPBasicAuth
 
         print(f"📥 Fetching media from: {url}")
-        response = requests.get(url, timeout=30)
+
+        # Check if this is a Twilio media URL
+        auth = None
+        if "api.twilio.com" in url:
+            # Get Twilio credentials from environment
+            account_sid = config.TWILIO_ACCOUNT_SID
+            auth_token = config.TWILIO_AUTH_TOKEN
+
+            if account_sid and auth_token:
+                auth = HTTPBasicAuth(account_sid, auth_token)
+                print(f"🔐 Using Twilio authentication")
+            else:
+                print(f"⚠️  Warning: Twilio credentials not found in environment")
+
+        response = requests.get(url, auth=auth, timeout=30)
 
         if response.status_code != 200:
             print(f"❌ Fetch failed with status {response.status_code}")
+            if response.status_code == 401:
+                print(f"❌ Authentication failed - check TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN")
             return None
 
         content = response.content
@@ -210,4 +229,6 @@ async def fetch_media_bytes(url: str) -> Optional[bytes]:
 
     except Exception as e:
         print(f"❌ Error fetching media: {e}")
+        import traceback
+        traceback.print_exc()
         return None

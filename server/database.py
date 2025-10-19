@@ -66,6 +66,7 @@ class Message(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     content_type: Mapped[str] = mapped_column(String(50), nullable=False)
     is_from_user: Mapped[bool] = mapped_column(default=True, nullable=False)
+    image_data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # Base64 encoded image
     timestamp: Mapped[datetime] = mapped_column(
         DateTime,
         server_default=text("NOW()")

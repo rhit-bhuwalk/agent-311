@@ -1,4 +1,5 @@
 """Twilio webhook routes for handling incoming WhatsApp messages."""
+import base64
 from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Form, Response, Depends
@@ -42,14 +43,16 @@ async def store_message(
     user: User,
     content: str,
     content_type: str,
-    is_from_user: bool = True
+    is_from_user: bool = True,
+    image_data: Optional[str] = None
 ) -> Message:
     """Store a message in the database."""
     message = Message(
         user_id=user.id,
         content=content,
         content_type=content_type,
-        is_from_user=is_from_user
+        is_from_user=is_from_user,
+        image_data=image_data
     )
     db.add(message)
     await db.commit()
@@ -92,9 +95,16 @@ async def process_and_store_media(
             analysis = await analyze_image(media_bytes, text=text_context)
             if analysis:
                 content = f"<image>{analysis}</image>"
+                # Convert image bytes to base64
+                image_base64 = base64.b64encode(media_bytes).decode('utf-8')
                 print(f"💾 Storing image analysis: {analysis[:100]}...")
-                message = await store_message(db, user, content, "image", is_from_user=True)
-                print(f"✅ Stored image analysis")
+                print(f"📸 Storing image as base64 ({len(image_base64)} chars)")
+                message = await store_message(
+                    db, user, content, "image",
+                    is_from_user=True,
+                    image_data=image_base64
+                )
+                print(f"✅ Stored image analysis with base64 data")
                 return message
             else:
                 print(f"❌ Gemini analysis returned None")
@@ -177,12 +187,13 @@ async def twilio_webhook(
         recent_messages = await get_recent_messages(db, user.id, limit=10)
         print(f"📜 Retrieved {len(recent_messages)} recent messages")
 
-        # Convert messages to dict format for Gemini
+        # Convert messages to dict format for Dedalus (include image data)
         message_dicts = [
             {
                 "content": msg.content,
                 "is_from_user": msg.is_from_user,
-                "content_type": msg.content_type
+                "content_type": msg.content_type,
+                "image_data": msg.image_data if hasattr(msg, 'image_data') else None
             }
             for msg in recent_messages
         ]

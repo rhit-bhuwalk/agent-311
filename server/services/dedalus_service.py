@@ -13,13 +13,14 @@ except ModuleNotFoundError:
     from config import config
 
 
-def submit_sf311_form(form_url: str, description: str) -> str:
+def submit_sf311_form(form_url: str, description: str, image_base64: str = "") -> str:
     """
     Submit a SF 311 service request form.
 
     Args:
         form_url: The SF 311 form URL (e.g., "https://sanfrancisco.form.us.empro.verintcloudservices.com/form/auto/pw_graffiti")
         description: Description of the issue including location and details
+        image_base64: Base64 encoded image data (optional)
 
     Returns:
         JSON string with submission result
@@ -28,12 +29,17 @@ def submit_sf311_form(form_url: str, description: str) -> str:
         print(f"🔧 Tool called: submit_sf311_form")
         print(f"   form_url: {form_url}")
         print(f"   description: {description}")
+        print(f"   image_base64: {'Yes (' + str(len(image_base64)) + ' chars)' if image_base64 else 'No'}")
 
         api_url = "https://a6b437402ddb.ngrok-free.app/api/submit"
         payload = {
             "formUrl": form_url,
             "description": description
         }
+
+        # Add image if provided
+        if image_base64:
+            payload["imageBase64"] = image_base64
 
         response = requests.post(
             api_url,
@@ -76,12 +82,19 @@ async def analyze_conversation_with_dedalus(messages: list[dict]) -> dict:
         # Set the API key in the environment (Dedalus SDK reads from DEDALUS_API_KEY)
         os.environ['DEDALUS_API_KEY'] = config.DEDALUS_API_KEY
 
-        # Build conversation history
+        # Build conversation history and extract the most recent image
         conversation = []
+        latest_image_base64 = None
+
         for msg in messages:
             role = "user" if msg.get("is_from_user") else "assistant"
             content = msg.get("content", "")
             conversation.append(f"{role.upper()}: {content}")
+
+            # Keep track of the latest image from user
+            if msg.get("is_from_user") and msg.get("image_data"):
+                latest_image_base64 = msg.get("image_data")
+                print(f"📸 Found image in conversation ({len(latest_image_base64)} chars)")
 
         conversation_text = "\n".join(conversation)
 
@@ -142,11 +155,16 @@ If user says "broken pothole at 1160 mission street":
     "clarification_question": null,
     "response_message": "Perfect! I've submitted your report for a pothole at 1160 Mission Street to SF 311. You should receive a case number shortly."
 }}
-then call the submit_sf311_form tool with the appropriate form URL and description
-{{
-    "form_url": "https://sanfrancisco.form.us.empro.verintcloudservices.com/form/auto/pw_pothole",
-    "description": "Pothole at 1160 Mission Street, San Francisco"
-}}
+then call the submit_sf311_form tool with the appropriate form URL and description"""
+
+        # Add image context if available
+        if latest_image_base64:
+            prompt += f"""
+
+IMPORTANT: An image is available in the conversation. When you call submit_sf311_form, you MUST include the image by passing image_base64="{latest_image_base64}".
+"""
+
+        prompt += """
 
 Now analyze the conversation above, use tools if appropriate, and respond with JSON only:"""
 
@@ -154,12 +172,18 @@ Now analyze the conversation above, use tools if appropriate, and respond with J
         client = AsyncDedalus()
         runner = DedalusRunner(client)
 
-        # Run the analysis using Dedalus with GPT-5-mini and the SF311 submission tool
+        # Create a wrapper function that includes the image
+        def submit_with_image(form_url: str, description: str) -> str:
+            """Submit SF311 form with image if available."""
+            return submit_sf311_form(form_url, description, latest_image_base64 or "")
+
+        # Run the analysis using Dedalus with GPT-5 and the SF311 submission tool
         print(f"🤖 Analyzing conversation with Dedalus (with SF311 submission tool)...")
+        print(f"📸 Image available: {bool(latest_image_base64)}")
         response = await runner.run(
             input=prompt,
             model="openai/gpt-5",
-            tools=[submit_sf311_form]
+            tools=[submit_with_image]
         )
 
         result_text = response.final_output.strip()

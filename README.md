@@ -106,11 +106,43 @@ To connect the backend to Twilio WhatsApp:
 │   │   └── twilio_webhook.py
 │   ├── services/        # Business logic
 │   │   ├── gemini.py    # Gemini AI integration
-│   │   └── sf311.py     # SF 311 submission (simulated)
+│   │   └── dedalus_service.py  # Dedalus AI + SF 311 form submission
 │   └── requirements.txt # Python dependencies
+├── graffiti-automation/ # Node.js service for SF 311 form automation
+│   ├── src/             # Core automation logic
+│   │   ├── server.js           # Express server
+│   │   ├── form-filler.js      # Playwright form automation
+│   │   ├── gemini-service.js   # AI field mapping
+│   │   └── location-handler.js # Address geocoding
+│   ├── test-cases/      # Comprehensive test suite (14 tests)
+│   └── README.md        # Detailed documentation
 ├── .env.local           # Environment variables (create this)
 └── package.json         # Root scripts for running both services
 ```
+
+## Graffiti Form Automation
+
+The `graffiti-automation/` directory contains a Node.js microservice that handles automated SF 311 graffiti form submissions using Playwright browser automation and Gemini AI.
+
+### Features
+- Automated multi-page form navigation with intelligent field detection
+- AI-powered form field mapping from natural language descriptions
+- Enhanced dropdown selection with proper form validation triggering
+- Image upload support
+- Address geocoding and auto-completion
+- 14 comprehensive test cases covering diverse scenarios
+
+### Running the Graffiti Automation Service
+
+```bash
+cd graffiti-automation
+npm install
+npm start
+```
+
+The service runs on `http://localhost:3000` and is automatically called by the Python backend's `dedalus_service.py` when submitting SF 311 forms.
+
+See [graffiti-automation/README.md](graffiti-automation/README.md) for detailed documentation.
 
 ## Documentation
 
@@ -136,13 +168,15 @@ See [CLAUDE.md](CLAUDE.md) for detailed architecture documentation and [server/R
 - ✅ **Backend API**: Python/FastAPI server with auto-generated docs at `/docs`
 - ✅ **Twilio Integration**: Receives and responds to WhatsApp messages
 - ✅ **Gemini AI Analysis**: Extracts request details from natural language
-- ⚠️ **SF 311 Submission**: Currently simulated (see production notes in code)
+- ✅ **SF 311 Graffiti Submission**: Fully automated using Playwright browser automation (graffiti-automation service)
 
 ## Production Deployment
 
 For production deployment, consider:
-- Implementing real SF 311 submission via browser automation (Playwright for Python) or API
 - Deploying backend to Railway, Render, or similar platform
 - Deploying frontend to Vercel, Netlify, or similar platform
+- Deploying graffiti-automation service separately or as part of backend
+- Update `GRAFFITI_API_URL` environment variable to point to deployed service
 - Setting up proper Twilio account (not sandbox)
 - Adding authentication and rate limiting
+- Implementing additional SF 311 form types (potholes, street cleaning, etc.)

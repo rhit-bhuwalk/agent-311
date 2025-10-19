@@ -159,9 +159,9 @@ then call the submit_sf311_form tool with the appropriate form URL and descripti
 
         # Add image context if available
         if latest_image_base64:
-            prompt += f"""
+            prompt += """
 
-IMPORTANT: An image is available in the conversation. When you call submit_sf311_form, you MUST include the image by passing image_base64="{latest_image_base64}".
+IMPORTANT: An image is available in the conversation. When you call submit_sf311_form, the image will be automatically included.
 """
 
         prompt += """
@@ -180,14 +180,23 @@ Now analyze the conversation above, use tools if appropriate, and respond with J
         # Run the analysis using Dedalus with GPT-5 and the SF311 submission tool
         print(f"🤖 Analyzing conversation with Dedalus (with SF311 submission tool)...")
         print(f"📸 Image available: {bool(latest_image_base64)}")
-        response = await runner.run(
-            input=prompt,
-            model="openai/gpt-5",
-            tools=[submit_with_image]
-        )
+        if latest_image_base64:
+            print(f"📸 Image size: {len(latest_image_base64)} chars")
 
-        result_text = response.final_output.strip()
-        print(f"📝 Dedalus raw response: {result_text[:200]}...")
+        try:
+            response = await runner.run(
+                input=prompt,
+                model="openai/gpt-5",
+                tools=[submit_with_image]
+            )
+
+            result_text = response.final_output.strip()
+            print(f"📝 Dedalus raw response: {result_text[:200]}...")
+        except Exception as e:
+            print(f"❌ Dedalus runner error: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
 
         # Try to extract JSON from response
         # Sometimes the model wraps it in ```json blocks

@@ -56,6 +56,9 @@ async def analyze_image(
         response = genai.GenerativeModel(model).generate_content([prompt, img])
         return response.text.strip()
     except Exception as e:
+        print(f"❌ Error in analyze_image: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 async def analyze_video(

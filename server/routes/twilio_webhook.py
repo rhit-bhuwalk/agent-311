@@ -79,27 +79,43 @@ async def process_and_store_media(
         # Fetch media bytes
         media_bytes = await fetch_media_bytes(media_url)
         if not media_bytes:
+            print(f"❌ Failed to fetch media bytes from {media_url}")
             return None
 
         # Analyze based on type
         if media_type.startswith("image/"):
+            print(f"🖼️  Analyzing image with Gemini...")
             analysis = await analyze_image(media_bytes, text=text_context)
             if analysis:
                 content = f"<image>{analysis}</image>"
+                print(f"💾 Storing image analysis: {analysis[:100]}...")
                 message = await store_message(db, user, content, "image")
                 print(f"✅ Stored image analysis")
                 return message
+            else:
+                print(f"❌ Gemini analysis returned None")
+                return None
 
         elif media_type.startswith("video/"):
+            print(f"🎥 Analyzing video with Gemini...")
             analysis = await analyze_video(media_bytes)
             if analysis:
                 content = f"<video>{analysis}</video>"
+                print(f"💾 Storing video analysis: {analysis[:100]}...")
                 message = await store_message(db, user, content, "video")
                 print(f"✅ Stored video analysis")
                 return message
+            else:
+                print(f"❌ Gemini video analysis returned None")
+                return None
+        else:
+            print(f"❌ Unsupported media type: {media_type}")
+            return None
 
     except Exception as e:
         print(f"❌ Error processing media: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 
@@ -123,6 +139,10 @@ async def twilio_webhook(
     """
     try:
         print(f'📨 Incoming message from {From}')
+        print(f'📊 NumMedia: {NumMedia}, Body: "{Body}"')
+        if NumMedia > 0:
+            print(f'📎 MediaUrl0: {MediaUrl0}')
+            print(f'📎 MediaContentType0: {MediaContentType0}')
 
         # Get or create user
         user = await get_or_create_user(db, From)
@@ -136,13 +156,18 @@ async def twilio_webhook(
 
         # Process media if present (images and videos get analyzed by Gemini)
         if NumMedia > 0 and MediaUrl0:
-            await process_and_store_media(
+            print(f"🔄 Starting media processing...")
+            result = await process_and_store_media(
                 db=db,
                 user=user,
                 media_url=MediaUrl0,
                 media_type=MediaContentType0 or "application/octet-stream",
                 text_context=Body if Body and Body.strip() else None
             )
+            if result:
+                print(f"✅ Media processed successfully: {result.id}")
+            else:
+                print(f"❌ Media processing returned None")
 
         # Send acknowledgment
         if Body and Body.strip():

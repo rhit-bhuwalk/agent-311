@@ -1,12 +1,12 @@
 # Backend Server Setup
 
-This directory contains the Node.js/Express backend that handles Twilio WhatsApp webhooks and processes SF 311 service requests using Gemini AI.
+This directory contains the Python/FastAPI backend that handles Twilio WhatsApp webhooks and processes SF 311 service requests using Gemini AI.
 
 ## Quick Start
 
-1. **Install dependencies** (from project root):
+1. **Install Python dependencies**:
    ```bash
-   npm install
+   pip install -r server/requirements.txt
    ```
 
 2. **Set up environment variables**:
@@ -19,6 +19,10 @@ This directory contains the Node.js/Express backend that handles Twilio WhatsApp
 3. **Run the server**:
    ```bash
    npm run server
+   ```
+   Or directly:
+   ```bash
+   python -m uvicorn server.main:app --reload --port 3001
    ```
 
 4. **Expose to the internet** (for Twilio webhooks):
@@ -62,6 +66,11 @@ Once you have ngrok running, configure your Twilio WhatsApp Sandbox:
 ## Server Endpoints
 
 - `GET /health` - Health check endpoint
+- `GET /docs` - Interactive API documentation (FastAPI auto-generated)
+- `GET /api/messages` - Get all stored messages
+- `GET /api/requests` - Get all stored 311 requests
+- `GET /api/models` - Get available Gemini models
+- `POST /api/models/select` - Select a Gemini model
 - `POST /twilio/webhook` - Main webhook for incoming WhatsApp messages
 - `POST /twilio/status` - Status callback for message delivery tracking
 
@@ -69,12 +78,15 @@ Once you have ngrok running, configure your Twilio WhatsApp Sandbox:
 
 ```
 server/
-├── index.js              # Express server setup
+├── main.py               # FastAPI server setup
+├── config.py             # Configuration and environment variables
+├── storage.py            # In-memory storage for messages and requests
+├── requirements.txt      # Python dependencies
 ├── routes/
-│   └── twilio-webhook.js # Twilio webhook handlers
+│   └── twilio_webhook.py # Twilio webhook handlers
 └── services/
-    ├── gemini.js         # Gemini AI integration
-    └── sf311.js          # SF 311 submission (simulated)
+    ├── gemini.py         # Gemini AI integration
+    └── sf311.py          # SF 311 submission (simulated)
 ```
 
 ## Production Deployment
@@ -84,8 +96,8 @@ For production deployment to services like Railway, Render, or Heroku:
 1. Set environment variables on your hosting platform
 2. Update Twilio webhook URLs to your production domain
 3. Optionally implement real SF 311 submission using:
-   - Browser automation (Playwright/Puppeteer)
+   - Browser automation (Playwright for Python)
    - SF 311 API if available
    - Open311 API standard
 
-See comments in `services/sf311.js` for production implementation guidance.
+See comments in `services/sf311.py` for production implementation guidance.

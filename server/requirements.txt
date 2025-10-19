@@ -1,0 +1,12 @@
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+python-dotenv==1.0.1
+python-multipart==0.0.12
+google-generativeai==0.8.3
+google-genai  # For Gemini Live API
+twilio==9.3.7
+pydantic==2.9.2
+# Video/Image processing dependencies
+pillow>=10.0.0
+moviepy>=1.0.3
+numpy>=1.24.0

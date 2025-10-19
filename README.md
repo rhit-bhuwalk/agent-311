@@ -17,12 +17,15 @@ View your app in AI Studio: https://ai.studio/apps/drive/13ZxrTpztNKibK7zwxXn9Jo
 
 ## Quick Start
 
-**Prerequisites:** Node.js 18+
+**Prerequisites:**
+- Node.js 18+
+- Python 3.9+
 
 1. **Install dependencies:**
    ```bash
-   npm install
+   npm run install:all
    ```
+   This installs both frontend (npm) and backend (Python) dependencies.
 
 2. **Set up environment variables:**
 
@@ -36,21 +39,21 @@ View your app in AI Studio: https://ai.studio/apps/drive/13ZxrTpztNKibK7zwxXn9Jo
 
 3. **Run the application:**
 
-   **Frontend only (dashboard with mock data):**
+   **Both frontend and backend (recommended):**
    ```bash
    npm run dev
    ```
-   Visit http://localhost:3000
+   - Frontend runs on http://localhost:3000
+   - Backend runs on http://localhost:3001
+
+   **Frontend only (dashboard with mock data):**
+   ```bash
+   npm run dev:frontend
+   ```
 
    **Backend only (Twilio webhook server):**
    ```bash
-   npm run server
-   ```
-   Server runs on http://localhost:3001
-
-   **Both frontend and backend:**
-   ```bash
-   npm run dev:all
+   npm run dev:server
    ```
 
 ## Twilio WhatsApp Setup
@@ -85,30 +88,52 @@ To connect the backend to Twilio WhatsApp:
 
 ```
 .
-├── components/          # React components for dashboard
-│   ├── Header.tsx
-│   ├── MessageFeed.tsx
-│   ├── MessageDetail.tsx
-│   └── RequestStatus.tsx
-├── server/              # Backend Express server
-│   ├── index.js         # Server entry point
+├── frontend/            # React/Vite frontend application
+│   ├── components/      # React components for dashboard
+│   │   ├── Header.tsx
+│   │   ├── MessageFeed.tsx
+│   │   ├── MessageDetail.tsx
+│   │   └── RequestStatus.tsx
+│   ├── App.tsx          # Main React app
+│   ├── types.ts         # TypeScript types
+│   ├── constants.ts     # Mock data for dashboard
+│   └── package.json     # Frontend dependencies
+├── server/              # Python/FastAPI backend server
+│   ├── main.py          # FastAPI app entry point
+│   ├── config.py        # Configuration
+│   ├── storage.py       # In-memory storage
 │   ├── routes/          # API routes
-│   │   └── twilio-webhook.js
-│   └── services/        # Business logic
-│       ├── gemini.js    # Gemini AI integration
-│       └── sf311.js     # SF 311 submission (simulated)
-├── App.tsx              # Main React app
-├── types.ts             # TypeScript types
-└── constants.ts         # Mock data for dashboard
+│   │   └── twilio_webhook.py
+│   ├── services/        # Business logic
+│   │   ├── gemini.py    # Gemini AI integration
+│   │   └── sf311.py     # SF 311 submission (simulated)
+│   └── requirements.txt # Python dependencies
+├── .env.local           # Environment variables (create this)
+└── package.json         # Root scripts for running both services
 ```
 
 ## Documentation
 
 See [CLAUDE.md](CLAUDE.md) for detailed architecture documentation and [server/README.md](server/README.md) for backend-specific setup.
 
+## Tech Stack
+
+**Frontend:**
+- React 19.2.0
+- TypeScript
+- Vite
+- Tailwind CSS
+
+**Backend:**
+- Python 3.9+
+- FastAPI
+- Google Generative AI (Gemini)
+- Twilio
+
 ## Current Status
 
-- ✅ **Frontend Dashboard**: Fully functional with mock data
+- ✅ **Frontend Dashboard**: Fully functional with mock data (React/Vite)
+- ✅ **Backend API**: Python/FastAPI server with auto-generated docs at `/docs`
 - ✅ **Twilio Integration**: Receives and responds to WhatsApp messages
 - ✅ **Gemini AI Analysis**: Extracts request details from natural language
 - ⚠️ **SF 311 Submission**: Currently simulated (see production notes in code)
@@ -116,7 +141,8 @@ See [CLAUDE.md](CLAUDE.md) for detailed architecture documentation and [server/R
 ## Production Deployment
 
 For production deployment, consider:
-- Implementing real SF 311 submission via browser automation (Playwright) or API
+- Implementing real SF 311 submission via browser automation (Playwright for Python) or API
 - Deploying backend to Railway, Render, or similar platform
+- Deploying frontend to Vercel, Netlify, or similar platform
 - Setting up proper Twilio account (not sandbox)
 - Adding authentication and rate limiting

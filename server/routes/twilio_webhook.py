@@ -200,10 +200,25 @@ async def twilio_webhook(
 
         # Analyze conversation with Dedalus
         print(f"🤖 Analyzing conversation with Dedalus...")
-        analysis = await analyze_conversation_with_dedalus(message_dicts)
+        try:
+            analysis = await analyze_conversation_with_dedalus(message_dicts)
+            print(f"✅ Dedalus analysis completed: {analysis}")
+        except Exception as e:
+            print(f"❌ Error calling analyze_conversation_with_dedalus: {e}")
+            import traceback
+            traceback.print_exc()
+            # Use fallback
+            analysis = {
+                "reporting": None,
+                "location": None,
+                "needs_clarification": True,
+                "clarification_question": "I encountered an error. Can you describe what you'd like to report?",
+                "response_message": "I encountered an error processing your message. Can you tell me what issue you'd like to report and where it's located?"
+            }
 
         # Get the response message
         response_text = analysis.get("response_message", "I'm here to help you report issues to SF 311!")
+        print(f"📤 Sending response to user: {response_text}")
 
         # Store AI response
         await store_message(db, user, response_text, "text", is_from_user=False)

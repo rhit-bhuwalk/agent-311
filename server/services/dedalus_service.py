@@ -183,20 +183,48 @@ Now analyze the conversation above, use tools if appropriate, and respond with J
         if latest_image_base64:
             print(f"📸 Image size: {len(latest_image_base64)} chars")
 
+        print(f"🔑 DEDALUS_API_KEY set: {bool(config.DEDALUS_API_KEY)}")
+        print(f"🔑 DEDALUS_API_KEY length: {len(config.DEDALUS_API_KEY) if config.DEDALUS_API_KEY else 0}")
+
         try:
-            response = await runner.run(
-                input=prompt,
-                model="openai/gpt-5",
-                tools=[submit_with_image]
+            print(f"📞 Starting Dedalus runner.run()...")
+            import asyncio
+            response = await asyncio.wait_for(
+                runner.run(
+                    input=prompt,
+                    model="openai/gpt-5",
+                    tools=[submit_with_image]
+                ),
+                timeout=60.0  # Increased to 60 second timeout
             )
 
+            print(f"✅ Dedalus runner completed successfully")
             result_text = response.final_output.strip()
             print(f"📝 Dedalus raw response: {result_text[:200]}...")
+        except asyncio.TimeoutError:
+            print(f"❌ Dedalus timed out after 60 seconds")
+            print(f"⚠️  This may indicate: API key issues, model issues, or network problems")
+            # Return a fallback response
+            return {
+                "reporting": None,
+                "location": None,
+                "needs_clarification": True,
+                "clarification_question": "I'm having trouble processing your request. Can you describe what issue you'd like to report?",
+                "response_message": "I'm having trouble processing your request. Can you describe what issue you'd like to report and where it's located?"
+            }
         except Exception as e:
-            print(f"❌ Dedalus runner error: {e}")
+            print(f"❌ Dedalus runner error: {type(e).__name__}: {e}")
             import traceback
+            print(f"📋 Full traceback:")
             traceback.print_exc()
-            raise
+            # Return fallback instead of crashing
+            return {
+                "reporting": None,
+                "location": None,
+                "needs_clarification": True,
+                "clarification_question": "I encountered an error. Can you describe what you'd like to report?",
+                "response_message": "I encountered an error processing your message. Can you tell me what issue you'd like to report and where it's located?"
+            }
 
         # Try to extract JSON from response
         # Sometimes the model wraps it in ```json blocks

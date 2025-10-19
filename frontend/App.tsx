@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { Message } from './types';
 
-const API_BASE_URL = 'http://localhost:3001/api';
+const API_BASE_URL = 'https://agent-311-production.up.railway.app/api';
 
 const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);

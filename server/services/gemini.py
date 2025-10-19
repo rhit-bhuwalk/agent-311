@@ -1,10 +1,8 @@
-"""Gemini AI tools: text, image, and video analysis for 311 requests."""
-import json
-import re
+"""Gemini AI tools: analyze content (text, image, video) to understand what's happening."""
 import asyncio
 import base64
 import io
-from typing import Optional, Dict, Any, Union
+from typing import Optional, Union
 from pathlib import Path
 
 import PIL.Image
@@ -13,11 +11,12 @@ from google import genai as genai_live
 from google.genai import types
 
 try:
-    # Try absolute import (for local development)
     from server.config import config
+    from server.prompts import IMAGE_PROMPT, VIDEO_PROMPT
 except ModuleNotFoundError:
     # Fall back to relative import (for Railway deployment)
     from config import config
+    from prompts import IMAGE_PROMPT, VIDEO_PROMPT
 
 # Configure Gemini
 genai.configure(api_key=config.GEMINI_API_KEY)
@@ -40,86 +39,30 @@ GEMINI_MODELS = {
 }
 
 
-# Shared prompt for 311 analysis
-PROMPT_TEMPLATE = """Analyze this {media_type} for a San Francisco 311 service request.
-
-Extract:
-- Request Type (e.g., Abandoned Vehicle, Pothole, Graffiti, Streetlight Repair, Illegal Dumping)
-- Location (full address in San Francisco)
-- Details
-- Confidence (0.00 to 1.00)
-
-{content}
-
-Return ONLY valid JSON:
-{{"requestType": "...", "location": "...", "details": "...", "confidence": 0.XX}}"""
-
-
-def _parse_response(text: str) -> Optional[Dict[str, Any]]:
-    """Parse and validate JSON from Gemini response."""
-    try:
-        json_match = re.search(r'\{[\s\S]*\}', text)
-        if not json_match:
-            return None
-
-        data = json.loads(json_match.group(0))
-
-        if not all(k in data for k in ['requestType', 'location', 'confidence']):
-            return None
-
-        return data
-    except:
-        return None
-
-
-async def analyze_text(message: str, model: str = GeminiModels.FLASH) -> Optional[Dict[str, Any]]:
-    """Analyze text message."""
-    try:
-        print(f'🤖 [TEXT] {model}')
-
-        prompt = PROMPT_TEMPLATE.format(
-            media_type="text message",
-            content=f'Message: "{message}"'
-        )
-
-        response = genai.GenerativeModel(model).generate_content(prompt)
-        return _parse_response(response.text)
-    except Exception as e:
-        print(f'❌ [TEXT] {e}')
-        return None
-
-
 async def analyze_image(
     image_data: Union[bytes, str, Path],
     text: Optional[str] = None,
-    model: str = GeminiModels.FLASH
-) -> Optional[Dict[str, Any]]:
-    """Analyze image (with optional text)."""
+    model: str = GeminiModels.FLASH) -> Optional[str]:
+    """Analyze image (with optional text) and describe what's happening."""
     try:
-        print(f'🖼️ [IMAGE] {model}')
-
-        # Load image
         if isinstance(image_data, (str, Path)):
             img = PIL.Image.open(image_data)
         else:
             img = PIL.Image.open(io.BytesIO(image_data))
 
-        content = f'Image{f" with message: {text}" if text else ""}'
-        prompt = PROMPT_TEMPLATE.format(media_type="image", content=content)
+        context = f'Additional context from message: "{text}"' if text else ''
+        prompt = IMAGE_PROMPT.format(context=context)
 
         response = genai.GenerativeModel(model).generate_content([prompt, img])
-        return _parse_response(response.text)
+        return response.text.strip()
     except Exception as e:
-        print(f'❌ [IMAGE] {e}')
         return None
 
-
 async def analyze_video(
-    video_path: Union[str, Path],
+    video_data: Union[bytes, str, Path],
     model: str = GeminiModels.LIVE_FLASH,
-    max_duration: float = 10.0
-) -> Optional[Dict[str, Any]]:
-    """Analyze video using Gemini Live API."""
+    max_duration: float = 10.0) -> Optional[str]:
+    """Analyze video using Gemini Live API and describe what's happening."""
     try:
         from moviepy import VideoFileClip
         import numpy as np
@@ -127,9 +70,22 @@ async def analyze_video(
         print('❌ [VIDEO] Install: pip install moviepy pillow numpy')
         return None
 
+    import tempfile
+    import os
+
+    temp_path = None
     try:
-        print(f'🎥 [VIDEO] {video_path}')
-        clip = VideoFileClip(str(video_path))
+        # Handle bytes input - write to temp file
+        if isinstance(video_data, bytes):
+            fd, temp_path = tempfile.mkstemp(suffix=".mp4")
+            os.close(fd)
+            with open(temp_path, "wb") as f:
+                f.write(video_data)
+            video_path = temp_path
+        else:
+            video_path = str(video_data)
+
+        clip = VideoFileClip(video_path)
 
         client = genai_live.Client(
             http_options={"api_version": "v1beta"},
@@ -140,10 +96,7 @@ async def analyze_video(
             response_modalities=["TEXT"],
             media_resolution="MEDIA_RESOLUTION_MEDIUM",
             system_instruction=types.Content(
-                parts=[types.Part(text=PROMPT_TEMPLATE.format(
-                    media_type="video",
-                    content="Analyze video frames and audio"
-                ))]
+                parts=[types.Part(text=VIDEO_PROMPT)]
             )
         )
 
@@ -204,7 +157,7 @@ async def analyze_video(
                             full_text.append(response.text)
             except:
                 pass
-            result = _parse_response(''.join(full_text))
+            result = ''.join(full_text).strip()
 
         async with client.aio.live.connect(model=model, config=config_live) as session:
             async with asyncio.TaskGroup() as tg:
@@ -214,8 +167,44 @@ async def analyze_video(
                 tg.create_task(receive(session))
 
         clip.close()
+
+        # Clean up temp file if created
+        if temp_path and os.path.exists(temp_path):
+            os.unlink(temp_path)
+
         return result
 
     except Exception as e:
         print(f'❌ [VIDEO] {e}')
+        # Clean up temp file if created
+        if temp_path and os.path.exists(temp_path):
+            os.unlink(temp_path)
+        return None
+
+async def fetch_media_bytes(url: str) -> Optional[bytes]:
+    """
+    Fetch media from a URL into memory.
+
+    Args:
+        url: URL to fetch from
+
+    Returns:
+        Media bytes, or None if fetch fails
+    """
+    try:
+        import requests
+
+        print(f"📥 Fetching media from: {url}")
+        response = requests.get(url, timeout=30)
+
+        if response.status_code != 200:
+            print(f"❌ Fetch failed with status {response.status_code}")
+            return None
+
+        content = response.content
+        print(f"✅ Fetched {len(content)} bytes")
+        return content
+
+    except Exception as e:
+        print(f"❌ Error fetching media: {e}")
         return None

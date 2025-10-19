@@ -7,10 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 try:
-    from server.services.gemini import analyze_image, analyze_video, fetch_media_bytes, analyze_conversation
+    from server.services.gemini import analyze_image, analyze_video, fetch_media_bytes
+    from server.services.dedalus_service import analyze_conversation_with_dedalus
     from server.database import get_db, User, Message, get_recent_messages
 except ModuleNotFoundError:
-    from services.gemini import analyze_image, analyze_video, fetch_media_bytes, analyze_conversation
+    from services.gemini import analyze_image, analyze_video, fetch_media_bytes
+    from services.dedalus_service import analyze_conversation_with_dedalus
     from database import get_db, User, Message, get_recent_messages
 
 router = APIRouter(prefix='/twilio', tags=['twilio'])
@@ -185,9 +187,9 @@ async def twilio_webhook(
             for msg in recent_messages
         ]
 
-        # Analyze conversation with Gemini
-        print(f"🤖 Analyzing conversation with Gemini...")
-        analysis = await analyze_conversation(message_dicts)
+        # Analyze conversation with Dedalus
+        print(f"🤖 Analyzing conversation with Dedalus...")
+        analysis = await analyze_conversation_with_dedalus(message_dicts)
 
         # Get the response message
         response_text = analysis.get("response_message", "I'm here to help you report issues to SF 311!")

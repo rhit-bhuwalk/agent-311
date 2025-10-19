@@ -4,6 +4,7 @@ python-dotenv==1.0.1
 python-multipart==0.0.12
 google-generativeai==0.8.3
 google-genai  # For Gemini Live API
+dedalus-labs>=0.1.0a9  # For Dedalus AI conversation analysis
 twilio==9.3.7
 pydantic==2.9.2
 requests>=2.28.0  # For fetching media
